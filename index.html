@@ -610,15 +610,22 @@ async function addTask(data) {
   return activeListRef().add(doc);
 }
 
+const _toggling = new Set();
 async function toggleDone(id) {
-  const task = tasks.find(t => t.id === id);
-  if (!task) return;
-  const nowDone = !task.done;
-  await taskDocRef(task).update({
-    done: nowDone,
-    prevCategory: nowDone ? (task.category !== 'done' ? task.category : task.prevCategory) : undefined,
-    category: nowDone ? 'done' : (task.prevCategory || 'week')
-  });
+  if (_toggling.has(id)) return;
+  _toggling.add(id);
+  try {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+    const nowDone = !task.done;
+    await taskDocRef(task).update({
+      done: nowDone,
+      prevCategory: nowDone ? (task.category !== 'done' ? task.category : task.prevCategory) : undefined,
+      category: nowDone ? 'done' : (task.prevCategory || 'week')
+    });
+  } finally {
+    setTimeout(() => _toggling.delete(id), 600);
+  }
 }
 
 async function deleteTask(id) {
