@@ -1059,7 +1059,7 @@ function renderCalendar() {
 
   // Build grid
   const todayISO = toLocalISO(new Date());
-  const firstDay = new Date(calYear,calMonth,1).getDay();
+  const firstDay = (new Date(calYear,calMonth,1).getDay() + 6) % 7;
   const daysInMo = new Date(calYear,calMonth+1,0).getDate();
   const cells=[];
   for(let i=0;i<firstDay;i++){ const d=new Date(calYear,calMonth,-(firstDay-1-i)); cells.push({date:d,thisMonth:false}); }
@@ -1075,7 +1075,7 @@ function renderCalendar() {
       <span class="cal-title">${monthName}</span>
       <button class="cal-nav-btn" id="cal-next">›</button>
     </div>
-    <div class="cal-weekdays">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="cal-wd">${d}</div>`).join('')}</div>
+    <div class="cal-weekdays">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="cal-wd">${d}</div>`).join('')}</div>
     <div class="cal-days">`;
 
   for (const cell of cells) {
