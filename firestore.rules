@@ -2,17 +2,20 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Each user's private tasks and drafts — only readable by that user
-    match /users/{userId}/{document=**} {
+    // User profiles — any signed-in user can read (needed for assignee picker + colours)
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Private tasks and drafts — owner only
+    match /users/{userId}/{sub}/{docId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-
-    // Shared family task list — any signed-in user can read and write
+    // Shared family list — any signed-in user
     match /familyTasks/{taskId} {
       allow read, write: if request.auth != null;
     }
-
-    // Shared Anthropic API key — any signed-in user can read or update it
+    // Shared API key — any signed-in user
     match /config/app {
       allow read, write: if request.auth != null;
     }

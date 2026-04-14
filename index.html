@@ -650,7 +650,10 @@ async function toggleDone(id) {
       category: nowDone ? 'done' : (task.prevCategory || 'week')
     });
   } finally {
-    setTimeout(() => _toggling.delete(id), 600);
+    // Clear after the next two paint frames — enough to swallow the phantom
+    // touch event the browser fires when a re-render lands under a finger,
+    // but doesn't block an intentional subsequent tap
+    requestAnimationFrame(() => requestAnimationFrame(() => _toggling.delete(id)));
   }
 }
 
