@@ -644,15 +644,17 @@ async function toggleDone(id) {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
     const nowDone = !task.done;
-    await taskDocRef(task).update({
+    const payload = {
       done: nowDone,
-      prevCategory: nowDone ? (task.category !== 'done' ? task.category : task.prevCategory) : undefined,
-      category: nowDone ? 'done' : (task.prevCategory || 'week')
-    });
+      category: nowDone ? 'done' : (task.prevCategory || 'week'),
+    };
+    // Only set prevCategory when marking done — never pass undefined to Firestore
+    if (nowDone) payload.prevCategory = task.category !== 'done' ? task.category : (task.prevCategory || 'week');
+    await taskDocRef(task).update(payload);
+  } catch(e) {
+    console.error('toggleDone:', e);
+    toast('Error updating task');
   } finally {
-    // Clear after the next two paint frames — enough to swallow the phantom
-    // touch event the browser fires when a re-render lands under a finger,
-    // but doesn't block an intentional subsequent tap
     requestAnimationFrame(() => requestAnimationFrame(() => _toggling.delete(id)));
   }
 }
