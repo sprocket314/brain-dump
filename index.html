@@ -726,56 +726,71 @@ const voiceBtn = document.getElementById('voice-btn');
 const dumpInput = document.getElementById('dump-input');
 const micSelectWrapper = document.getElementById('mic-select-wrapper');
 const micSelect = document.getElementById('mic-select');
-let recognition = null, isRecording = false, micStream = null, selectedDeviceId = '';
+let recognition = null, isRecording = false, micStream = null;
+let selectedDeviceId = localStorage.getItem('selectedMicId') || '';
 
 async function populateMics() {
   if (!navigator.mediaDevices?.enumerateDevices) return;
   try {
     const mics = (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');
     if (mics.length <= 1) { micSelectWrapper.style.display='none'; return; }
-    const prev = micSelect.value || selectedDeviceId;
     micSelect.innerHTML = '';
     mics.forEach(m => { const o=document.createElement('option'); o.value=m.deviceId; o.textContent=m.label||`Mic (${m.deviceId.slice(0,8)}…)`; micSelect.appendChild(o); });
-    if (prev && mics.some(m=>m.deviceId===prev)) micSelect.value = prev;
+    const saved = selectedDeviceId;
+    if (saved && mics.some(m=>m.deviceId===saved)) micSelect.value = saved;
     selectedDeviceId = micSelect.value;
     micSelectWrapper.style.display = 'block';
   } catch(e) { console.warn(e); }
 }
-micSelect.onchange = () => { selectedDeviceId=micSelect.value; if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;} };
+micSelect.onchange = () => {
+  selectedDeviceId = micSelect.value;
+  localStorage.setItem('selectedMicId', selectedDeviceId);
+  if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}
+};
 populateMics();
 if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', populateMics);
 
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SR(); recognition.continuous=true; recognition.interimResults=true; recognition.lang='en-US';
-  let finalT='', interimT='', baseText='';
-  recognition.onresult = e => {
-    interimT='';
-    for (let i=e.resultIndex;i<e.results.length;i++) {
-      if(e.results[i].isFinal) finalT+=e.results[i][0].transcript;
-      else interimT+=e.results[i][0].transcript;
-    }
-    dumpInput.value=baseText+finalT+interimT;
-    dumpInput.scrollTop=dumpInput.scrollHeight;
-  };
-  recognition.onend = () => {
-    if (isRecording) {
-      // Consolidate into baseText before restarting — mobile browsers replay
-      // previous results on each new session, causing duplication otherwise
-      if(interimT){finalT+=interimT;interimT='';}
-      baseText=baseText+finalT; finalT='';
+  let interimT='', baseText='';
+
+  function makeRecognition() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const r = new SR();
+    r.continuous=true; r.interimResults=true; r.lang='en-US';
+    r.onresult = e => {
+      interimT='';
+      // Append only new final results directly to baseText to prevent replay duplication
+      for (let i=e.resultIndex;i<e.results.length;i++) {
+        if(e.results[i].isFinal) baseText+=e.results[i][0].transcript;
+        else interimT+=e.results[i][0].transcript;
+      }
+      dumpInput.value=baseText+interimT;
+      dumpInput.scrollTop=dumpInput.scrollHeight;
+    };
+    r.onend = () => {
+      if (isRecording) {
+        if(interimT){baseText+=interimT;interimT='';}
+        dumpInput.value=baseText; dumpInput.scrollTop=dumpInput.scrollHeight;
+        // Create a fresh instance — reusing the same object on mobile causes
+        // the previous session's results to replay, duplicating transcribed text
+        recognition=makeRecognition();
+        try{recognition.start();}catch(_){}
+        return;
+      }
+      voiceBtn.classList.remove('recording'); voiceBtn.textContent='🎙️';
+      if(interimT){baseText+=interimT;interimT='';}
       dumpInput.value=baseText; dumpInput.scrollTop=dumpInput.scrollHeight;
-      try{recognition.start();}catch(_){} return;
-    }
-    voiceBtn.classList.remove('recording'); voiceBtn.textContent='🎙️';
-    if(interimT){finalT+=interimT;interimT='';}
-    dumpInput.value=baseText+finalT; dumpInput.scrollTop=dumpInput.scrollHeight;
-  };
-  recognition.onerror = e => {
-    if(e.error==='no-speech'||e.error==='aborted') return;
-    isRecording=false; voiceBtn.classList.remove('recording'); voiceBtn.textContent='🎙️';
-    toast('Mic error: '+e.error);
-  };
+    };
+    r.onerror = e => {
+      if(e.error==='no-speech'||e.error==='aborted') return;
+      isRecording=false; voiceBtn.classList.remove('recording'); voiceBtn.textContent='🎙️';
+      toast('Mic error: '+e.error);
+    };
+    return r;
+  }
+
+  recognition = makeRecognition();
+
   voiceBtn.onclick = async () => {
     if (isRecording) { isRecording=false; recognition.stop(); return; }
     if (!micStream||!micStream.active) {
@@ -785,7 +800,8 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         await populateMics();
       } catch(e) { toast('Mic denied: '+(e.message||e.name)); return; }
     }
-    baseText=dumpInput.value?dumpInput.value+'\n':''; finalT=''; interimT='';
+    baseText=dumpInput.value?dumpInput.value+'\n':''; interimT='';
+    recognition=makeRecognition();
     recognition.start(); isRecording=true;
     voiceBtn.classList.add('recording'); voiceBtn.textContent='⏹️';
     toast('Recording… click again to stop');
