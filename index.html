@@ -759,7 +759,14 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     dumpInput.scrollTop=dumpInput.scrollHeight;
   };
   recognition.onend = () => {
-    if (isRecording) { try{recognition.start();}catch(_){} return; }
+    if (isRecording) {
+      // Consolidate into baseText before restarting — mobile browsers replay
+      // previous results on each new session, causing duplication otherwise
+      if(interimT){finalT+=interimT;interimT='';}
+      baseText=baseText+finalT; finalT='';
+      dumpInput.value=baseText; dumpInput.scrollTop=dumpInput.scrollHeight;
+      try{recognition.start();}catch(_){} return;
+    }
     voiceBtn.classList.remove('recording'); voiceBtn.textContent='🎙️';
     if(interimT){finalT+=interimT;interimT='';}
     dumpInput.value=baseText+finalT; dumpInput.scrollTop=dumpInput.scrollHeight;
