@@ -264,6 +264,62 @@
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+
+    /* ── Mobile layout ────────────────────────── */
+    .mobile-nav { display: none; }
+
+    @media (max-width: 700px) {
+      /* Bottom nav bar */
+      .mobile-nav {
+        display: flex;
+        position: fixed; bottom: 0; left: 0; right: 0;
+        height: 58px;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        z-index: 50;
+      }
+      .mob-tab {
+        flex: 1; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 3px;
+        background: none; border: none; color: var(--muted);
+        font-size: .68rem; font-weight: 500; cursor: pointer;
+        transition: color .15s; padding: 6px 0;
+      }
+      .mob-tab.active { color: var(--accent); }
+      .mob-icon { font-size: 1.3rem; line-height: 1; }
+
+      /* Header: tighter on mobile */
+      header { padding: 10px 14px; gap: 9px; }
+      header .subtitle { display: none; }
+      .user-pill { display: none; }
+      #sign-out-btn { display: none; }
+      .hdr-btn { padding: 5px 9px; font-size: .68rem; }
+
+      /* Panels: full-width, one visible at a time */
+      .main { overflow: visible; }
+      .input-panel {
+        display: none;
+        width: 100%; border-right: none;
+        padding-bottom: 70px; /* clear fixed nav */
+      }
+      .input-panel.mob-active { display: flex; }
+
+      .tasks-panel {
+        padding: 16px 14px;
+        padding-bottom: 70px; /* clear fixed nav */
+      }
+      .tasks-panel.mob-hidden { display: none; }
+
+      /* Larger touch targets */
+      .task-check { width: 22px; height: 22px; }
+      .task-action-btn { width: 30px; height: 30px; }
+      .task-actions { opacity: 1; } /* always visible on touch */
+      #voice-btn { width: 60px; height: 60px; font-size: 1.6rem; }
+      textarea { min-height: 140px; }
+
+      /* Auth card full-width */
+      .auth-card { padding: 28px 20px; }
+    }
   </style>
 </head>
 <body>
@@ -358,6 +414,18 @@
       <div id="tasks-container"></div>
     </div>
   </div>
+
+  <!-- Mobile bottom nav (hidden on desktop) -->
+  <nav class="mobile-nav" id="mobile-nav">
+    <button class="mob-tab active" id="mob-tasks-tab">
+      <span class="mob-icon">☑</span>
+      <span>Tasks</span>
+    </button>
+    <button class="mob-tab" id="mob-capture-tab">
+      <span class="mob-icon">✏️</span>
+      <span>Capture</span>
+    </button>
+  </nav>
 </div>
 
 <!-- API Key modal -->
@@ -851,6 +919,7 @@ Return ONLY a JSON array, no markdown, no explanation.`,
 
     dumpInput.value = '';
     toast(`Added ${added} task${added !== 1 ? 's' : ''}`);
+    if (isMobile()) setMobilePanel('tasks');
   } catch (e) {
     console.error(e);
     toast('Error: ' + e.message);
@@ -859,6 +928,31 @@ Return ONLY a JSON array, no markdown, no explanation.`,
     processBtn.classList.remove('loading');
   }
 };
+
+// ── Mobile panel switching ─────────────────────────────────────
+const inputPanel   = document.querySelector('.input-panel');
+const tasksPanel   = document.querySelector('.tasks-panel');
+const mobTasksTab  = document.getElementById('mob-tasks-tab');
+const mobCaptureTab = document.getElementById('mob-capture-tab');
+
+function isMobile() { return window.innerWidth <= 700; }
+
+function setMobilePanel(panel) {
+  if (panel === 'tasks') {
+    inputPanel.classList.remove('mob-active');
+    tasksPanel.classList.remove('mob-hidden');
+    mobTasksTab.classList.add('active');
+    mobCaptureTab.classList.remove('active');
+  } else {
+    tasksPanel.classList.add('mob-hidden');
+    inputPanel.classList.add('mob-active');
+    mobCaptureTab.classList.add('active');
+    mobTasksTab.classList.remove('active');
+  }
+}
+
+mobTasksTab.onclick  = () => setMobilePanel('tasks');
+mobCaptureTab.onclick = () => setMobilePanel('capture');
 
 // ── Quick add ──────────────────────────────────────────────────
 const quickInput  = document.getElementById('quick-input');
@@ -870,6 +964,7 @@ async function quickAdd() {
   quickInput.value = '';
   await addTask({ text, note: '', category: 'week', done: false });
   toast('Task added');
+  if (isMobile()) setMobilePanel('tasks');
 }
 quickAddBtn.onclick = quickAdd;
 quickInput.addEventListener('keydown', e => { if (e.key === 'Enter') quickAdd(); });
