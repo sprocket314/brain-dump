@@ -56,6 +56,11 @@
     .color-picker-wrap{position:relative;}
     #color-panel{position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;display:none;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.4);}
     #color-panel.open{display:block;}
+    .color-panel-name-row{display:flex;gap:5px;margin-bottom:9px;}
+    .color-panel-name-input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.78rem;padding:5px 8px;outline:none;font-family:inherit;min-width:0;transition:border-color .15s;}
+    .color-panel-name-input:focus{border-color:var(--accent);}
+    .color-panel-name-btn{padding:5px 9px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:filter .15s;}
+    .color-panel-name-btn:hover{filter:brightness(1.15);}
     .color-swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;width:144px;}
     .color-swatch{width:20px;height:20px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .1s;}
     .color-swatch:hover{transform:scale(1.2);}
@@ -274,6 +279,10 @@
       <div class="color-picker-wrap">
         <div class="user-color-dot" id="user-color-dot" title="Change your colour"></div>
         <div id="color-panel">
+          <div class="color-panel-name-row">
+            <input id="color-panel-name" class="color-panel-name-input" type="text" placeholder="Your name" maxlength="32"/>
+            <button id="color-panel-name-save" class="color-panel-name-btn">Save</button>
+          </div>
           <div class="color-swatches" id="color-swatches"></div>
         </div>
       </div>
@@ -522,10 +531,27 @@ function buildSwatches() {
     swatchWrap.appendChild(el);
   });
 }
+const colorNameInput = document.getElementById('color-panel-name');
+const colorNameSave  = document.getElementById('color-panel-name-save');
+
+async function saveDisplayName() {
+  const name = colorNameInput.value.trim();
+  if (!name || !currentUser) return;
+  await currentUser.updateProfile({ displayName: name });
+  await db.doc(`users/${currentUser.uid}`).set({ displayName: name }, { merge: true });
+  allUsers[currentUser.uid] = { ...allUsers[currentUser.uid], displayName: name };
+  document.getElementById('user-pill').textContent = name;
+  toast('Name updated');
+}
+colorNameSave.onclick = saveDisplayName;
+colorNameInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveDisplayName(); });
+
 colorDot.onclick = (e) => {
   e.stopPropagation();
   buildSwatches();
+  colorNameInput.value = currentUser?.displayName || '';
   colorPanel.classList.toggle('open');
+  if (colorPanel.classList.contains('open')) setTimeout(() => colorNameInput.focus(), 50);
 };
 document.addEventListener('click', (e) => {
   if (!document.querySelector('.color-picker-wrap')?.contains(e.target)) colorPanel.classList.remove('open');
