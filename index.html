@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brain Dump</title>
+
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+  <style>
+    :root {
+      --bg: #0f0f10; --surface: #1a1a1d; --surface2: #242428;
+      --border: #2e2e35; --text: #e8e8f0; --muted: #7070a0;
+      --accent: #7c6af5; --accent-glow: rgba(124,106,245,.18);
+      --green: #4ade80; --amber: #fbbf24; --red: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── Loading ──────────────────────────────── */
+    #loading-screen {
+      position: fixed; inset: 0; background: var(--bg);
+      display: flex; align-items: center; justify-content: center; z-index: 300;
+    }
+    .spin-ring {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 3px solid var(--border); border-top-color: var(--accent);
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Auth screen ──────────────────────────── */
+    #auth-screen {
+      flex: 1; display: none; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .auth-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 36px 32px; width: 380px; max-width: 100%;
+    }
+    .auth-logo {
+      width: 48px; height: 48px; background: var(--accent); border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; margin: 0 auto 20px;
+    }
+    .auth-title { font-size: 1.3rem; font-weight: 700; text-align: center; margin-bottom: 4px; }
+    .auth-sub { font-size: .82rem; color: var(--muted); text-align: center; margin-bottom: 24px; }
+    .auth-error {
+      background: rgba(248,113,113,.12); border: 1px solid rgba(248,113,113,.3);
+      border-radius: 8px; padding: 10px 14px; font-size: .82rem; color: var(--red);
+      margin-bottom: 16px; display: none;
+    }
+    .auth-input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: .9rem;
+      padding: 11px 13px; outline: none; font-family: inherit;
+      transition: border-color .15s; margin-bottom: 10px; display: block;
+    }
+    .auth-input:focus { border-color: var(--accent); }
+    .auth-input::placeholder { color: var(--muted); }
+    .auth-submit {
+      width: 100%; padding: 12px; background: var(--accent); color: #fff;
+      border: none; border-radius: 10px; font-size: .9rem; font-weight: 600;
+      cursor: pointer; transition: filter .15s; margin-top: 4px;
+    }
+    .auth-submit:hover { filter: brightness(1.15); }
+    .auth-submit:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+    .auth-toggle { text-align: center; margin-top: 18px; font-size: .82rem; color: var(--muted); }
+    .auth-toggle-link { background: none; border: none; color: var(--accent); cursor: pointer; font-size: .82rem; text-decoration: underline; }
+
+    /* ── Header ───────────────────────────────── */
+    header {
+      padding: 14px 24px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+    }
+    .logo {
+      width: 34px; height: 34px; background: var(--accent); border-radius: 9px;
+      display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;
+    }
+    header h1 { font-size: 1rem; font-weight: 600; }
+    header .subtitle { font-size: .75rem; color: var(--muted); margin-top: 1px; }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .hdr-btn {
+      font-size: .72rem; padding: 5px 11px; border-radius: 6px;
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      cursor: pointer; transition: all .15s; white-space: nowrap;
+    }
+    .hdr-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #api-key-status { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
+    #api-key-status.ok { background: var(--green); }
+    .user-pill {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 4px 11px; font-size: .75rem; color: var(--text);
+      max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    /* ── Layout ───────────────────────────────── */
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Input panel ──────────────────────────── */
+    .input-panel {
+      width: 360px; flex-shrink: 0; border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; padding: 20px 18px; gap: 14px; overflow-y: auto;
+    }
+    .panel-label { font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+    .voice-row { display: flex; gap: 10px; align-items: center; }
+    #voice-btn {
+      width: 52px; height: 52px; border-radius: 50%; border: 2px solid var(--border);
+      background: var(--surface); font-size: 1.3rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .2s; flex-shrink: 0;
+    }
+    #voice-btn:hover { border-color: var(--accent); background: var(--accent-glow); }
+    #voice-btn.recording { border-color: var(--red); background: rgba(248,113,113,.15); animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.4)} 50%{box-shadow:0 0 0 10px rgba(248,113,113,0)} }
+    .voice-hint { font-size: .78rem; color: var(--muted); line-height: 1.4; }
+    .voice-hint strong { color: var(--text); }
+    #mic-select-wrapper { display: none; }
+    #mic-select {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: .78rem; padding: 7px 28px 7px 10px;
+      outline: none; font-family: inherit; cursor: pointer; transition: border-color .15s;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%237070a0' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+    }
+    #mic-select:focus { border-color: var(--accent); }
+    #mic-select option { background: var(--surface2); }
+    textarea {
+      width: 100%; min-height: 160px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); font-size: .88rem; line-height: 1.6;
+      padding: 12px; resize: vertical; outline: none; font-family: inherit; transition: border-color .15s;
+    }
+    textarea:focus { border-color: var(--accent); }
+    textarea::placeholder { color: var(--muted); }
+    #process-btn {
+      width: 100%; padding: 12px; background: var(--accent); color: #fff; border: none;
+      border-radius: 10px; font-size: .88rem; font-weight: 600; cursor: pointer;
+      transition: filter .15s; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    #process-btn:hover { filter: brightness(1.15); }
+    #process-btn:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+    .spinner { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; display: none; }
+    #process-btn.loading .spinner { display: block; }
+    #process-btn.loading .btn-text::after { content: 'Organising…'; }
+    #process-btn:not(.loading) .btn-text::after { content: 'Process thoughts'; }
+    .sep { border-top: 1px solid var(--border); padding-top: 14px; }
+    .quick-add-row { display: flex; gap: 7px; }
+    #quick-input {
+      flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-size: .83rem; padding: 8px 11px; outline: none;
+      font-family: inherit; transition: border-color .15s;
+    }
+    #quick-input:focus { border-color: var(--accent); }
+    #quick-input::placeholder { color: var(--muted); }
+    #quick-add-btn {
+      padding: 8px 13px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: .83rem; cursor: pointer; white-space: nowrap; transition: all .15s;
+    }
+    #quick-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-row { display: flex; gap: 5px; flex-wrap: wrap; }
+    .filter-btn {
+      padding: 4px 11px; border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); font-size: .72rem; cursor: pointer; transition: all .15s;
+    }
+    .filter-btn.active, .filter-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+    /* Drafts */
+    #drafts-section { display: none; }
+    .draft-item { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; margin-bottom: 7px; }
+    .draft-time { color: var(--muted); font-size: .68rem; margin-bottom: 3px; }
+    .draft-preview { font-size: .76rem; color: var(--text); line-height: 1.45; max-height: 2.9em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .draft-actions { display: flex; gap: 5px; margin-top: 7px; }
+    .draft-btn { font-size: .7rem; padding: 3px 9px; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; transition: all .15s; }
+    .draft-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .draft-btn.del:hover { border-color: var(--red); color: var(--red); }
+
+    /* ── Tasks panel ──────────────────────────── */
+    .tasks-panel { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 0; }
+    .tasks-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-shrink: 0; }
+    /* List tabs */
+    .list-tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+    .list-tab {
+      padding: 6px 16px; border-radius: 7px; border: none; background: transparent;
+      color: var(--muted); font-size: .82rem; font-weight: 500; cursor: pointer; transition: all .15s;
+    }
+    .list-tab.active { background: var(--accent); color: #fff; }
+    .task-count { font-size: .72rem; color: var(--muted); background: var(--surface); padding: 3px 9px; border-radius: 20px; }
+    /* Column headers */
+    .col-header { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; margin-top: 24px; }
+    .col-header:first-child { margin-top: 0; }
+    .col-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .col-header h3 { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .col-header .col-count { font-size: .68rem; color: var(--muted); background: var(--surface); padding: 1px 6px; border-radius: 10px; }
+    /* Task card */
+    .task-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px 13px; margin-bottom: 7px; display: flex; gap: 10px;
+      align-items: flex-start; transition: border-color .15s; cursor: default;
+    }
+    .task-card:hover .task-actions { opacity: 1; }
+    .task-check {
+      width: 17px; height: 17px; border-radius: 50%; border: 2px solid var(--border);
+      cursor: pointer; flex-shrink: 0; margin-top: 2px;
+      display: flex; align-items: center; justify-content: center; transition: all .15s;
+    }
+    .task-check:hover { border-color: var(--green); }
+    .task-check.done { background: var(--green); border-color: var(--green); }
+    .task-check.done::after { content: '✓'; font-size: .6rem; color: #0f0f10; font-weight: 700; }
+    .task-body { flex: 1; min-width: 0; }
+    .task-text { font-size: .85rem; line-height: 1.5; color: var(--text); word-break: break-word; }
+    .task-card.done-card .task-text { text-decoration: line-through; color: var(--muted); }
+    .task-meta { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; align-items: center; }
+    .task-tag { font-size: .65rem; padding: 2px 7px; border-radius: 10px; font-weight: 500; }
+    .tag-today { background: rgba(124,106,245,.2); color: #a99efa; }
+    .tag-week  { background: rgba(45,212,191,.15); color: #5eead4; }
+    .tag-later { background: rgba(148,163,184,.1); color: #94a3b8; }
+    .tag-done  { background: rgba(74,222,128,.1); color: #4ade80; }
+    .tag-creator { background: rgba(251,191,36,.1); color: #fbbf24; }
+    .task-note { font-size: .75rem; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+    .task-actions { opacity: 0; display: flex; gap: 3px; transition: opacity .15s; flex-shrink: 0; }
+    .task-action-btn {
+      width: 24px; height: 24px; border-radius: 5px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--muted); font-size: .72rem;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s;
+    }
+    .task-action-btn:hover { border-color: var(--red); color: var(--red); }
+    .empty-state { text-align: center; padding: 50px 20px; color: var(--muted); }
+    .empty-state .empty-icon { font-size: 2.2rem; margin-bottom: 10px; }
+    .empty-state p { font-size: .85rem; line-height: 1.6; }
+
+    /* ── Modals ───────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+      display: none; align-items: center; justify-content: center; z-index: 100;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 26px; width: 420px; max-width: 90vw; }
+    .modal h3 { font-size: .95rem; margin-bottom: 14px; }
+    .modal input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-size: .88rem; padding: 10px 12px; outline: none;
+      font-family: inherit; margin-bottom: 8px; transition: border-color .15s; display: block;
+    }
+    .modal input:focus { border-color: var(--accent); }
+    .modal p.hint { font-size: .76rem; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
+    .modal-actions { display: flex; gap: 9px; justify-content: flex-end; }
+    .btn-ghost { padding: 7px 15px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: .82rem; cursor: pointer; transition: all .15s; }
+    .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+    .btn-primary { padding: 7px 15px; border-radius: 7px; border: none; background: var(--accent); color: #fff; font-size: .82rem; font-weight: 600; cursor: pointer; transition: filter .15s; }
+    .btn-primary:hover { filter: brightness(1.15); }
+
+    /* ── Toast ────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(16px);
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+      padding: 9px 18px; font-size: .8rem; opacity: 0; transition: all .22s;
+      pointer-events: none; white-space: nowrap; z-index: 200;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading-screen"><div class="spin-ring"></div></div>
+
+<!-- Auth screen -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">🧠</div>
+    <h2 class="auth-title">Brain Dump</h2>
+    <p class="auth-sub">Family task assistant</p>
+    <div id="auth-error" class="auth-error"></div>
+    <input type="text"     id="auth-name"     class="auth-input" placeholder="Your name"     style="display:none" autocomplete="name" />
+    <input type="email"    id="auth-email"    class="auth-input" placeholder="Email"          autocomplete="email" />
+    <input type="password" id="auth-password" class="auth-input" placeholder="Password"       autocomplete="current-password" />
+    <button id="auth-submit" class="auth-submit">Sign in</button>
+    <p class="auth-toggle">
+      <span id="auth-toggle-text">Don't have an account?</span>
+      <button id="auth-toggle-btn" class="auth-toggle-link">Sign up</button>
+    </p>
+  </div>
+</div>
+
+<!-- Main app -->
+<div id="app" style="display:none; flex-direction:column; min-height:100vh">
+
+  <header>
+    <div class="logo">🧠</div>
+    <div>
+      <h1>Brain Dump</h1>
+      <div class="subtitle">Family task assistant</div>
+    </div>
+    <div class="header-right">
+      <div id="api-key-status" title="Shared API key status"></div>
+      <button id="api-key-btn" class="hdr-btn">API Key</button>
+      <div class="user-pill" id="user-pill"></div>
+      <button id="sign-out-btn" class="hdr-btn">Sign out</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <!-- Input panel -->
+    <div class="input-panel">
+      <div class="panel-label">Capture</div>
+
+      <div class="voice-row">
+        <button id="voice-btn" title="Click to record">🎙️</button>
+        <div class="voice-hint"><strong>Click to record</strong><br>Speak your thoughts — tasks, ideas, anything.</div>
+      </div>
+      <div id="mic-select-wrapper"><select id="mic-select" title="Select microphone"></select></div>
+
+      <textarea id="dump-input" placeholder="Paste or type your thoughts here…&#10;&#10;Examples:&#10;• Call dentist tomorrow&#10;• Finish the report by Friday&#10;• Buy milk and eggs&#10;• Read that article someday"></textarea>
+
+      <button id="process-btn"><div class="spinner"></div><span class="btn-text"></span></button>
+
+      <div class="sep">
+        <div class="panel-label" style="margin-bottom:9px">Quick add</div>
+        <div class="quick-add-row">
+          <input type="text" id="quick-input" placeholder="Add a single task…" />
+          <button id="quick-add-btn">Add</button>
+        </div>
+      </div>
+
+      <div class="sep">
+        <div class="panel-label" style="margin-bottom:9px">Filter</div>
+        <div class="filter-row">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="today">Today</button>
+          <button class="filter-btn" data-filter="week">This week</button>
+          <button class="filter-btn" data-filter="later">Later</button>
+          <button class="filter-btn" data-filter="done">Done</button>
+        </div>
+      </div>
+
+      <div id="drafts-section" class="sep">
+        <div class="panel-label" style="margin-bottom:9px">Saved drafts</div>
+        <div id="drafts-list"></div>
+      </div>
+    </div>
+
+    <!-- Tasks panel -->
+    <div class="tasks-panel">
+      <div class="tasks-header">
+        <div class="list-tabs">
+          <button class="list-tab active" data-list="private">My List</button>
+          <button class="list-tab" data-list="family">Family</button>
+        </div>
+        <span class="task-count" id="task-count">0 tasks</span>
+      </div>
+      <div id="tasks-container"></div>
+    </div>
+  </div>
+</div>
+
+<!-- API Key modal -->
+<div class="modal-overlay" id="api-modal">
+  <div class="modal">
+    <h3>Shared API Key</h3>
+    <p class="hint">
+      This key is shared with all family members — set it once and everyone can use the assistant.<br>
+      Stored securely in your database, readable only by signed-in users.<br><br>
+      Get a key at <strong>console.anthropic.com</strong>.
+    </p>
+    <input type="password" id="api-key-input" placeholder="sk-ant-…" autocomplete="off" />
+    <div class="modal-actions">
+      <button class="btn-ghost" id="modal-cancel">Cancel</button>
+      <button class="btn-primary" id="modal-save">Save for everyone</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── Firebase config ────────────────────────────────────────────
+// Paste your Firebase project config here (from Firebase console → Project settings)
+const firebaseConfig = {
+	  apiKey: "AIzaSyBnn3OfOqanBb9chMBJF6btnX6OD2Htc_o",
+	  authDomain: "moreno-yao-family-tasks.firebaseapp.com",
+	  projectId: "moreno-yao-family-tasks",
+	  storageBucket: "moreno-yao-family-tasks.firebasestorage.app",
+	  messagingSenderId: "204566522785",
+	  appId: "1:204566522785:web:855c1c7e5080f36ecfb9e0"
+	};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+// ── Utilities ──────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+// ── App state ──────────────────────────────────────────────────
+let currentUser   = null;
+let currentList   = 'private'; // 'private' | 'family'
+let currentFilter = 'all';
+let tasks         = [];
+let drafts        = [];
+let cachedApiKey  = null;
+let unsubTasks    = null;
+let unsubDrafts   = null;
+let unsubConfig   = null;
+let pendingName   = null; // display name captured during sign-up before onAuthStateChanged
+
+// ── Auth state ─────────────────────────────────────────────────
+auth.onAuthStateChanged(async user => {
+  document.getElementById('loading-screen').style.display = 'none';
+
+  if (!user) {
+    currentUser = null;
+    stopListeners();
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('auth-screen').style.display = 'flex';
+    return;
+  }
+
+  currentUser = user;
+
+  // Persist display name from sign-up if auth profile doesn't have it yet
+  const displayName = pendingName || user.displayName || user.email.split('@')[0];
+  pendingName = null;
+  if (!user.displayName && displayName) {
+    user.updateProfile({ displayName }).catch(() => {});
+  }
+
+  // Save profile to Firestore (merge so existing fields aren't overwritten)
+  db.doc(`users/${user.uid}`).set({
+    email: user.email, displayName,
+    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true }).catch(() => {});
+
+  document.getElementById('user-pill').textContent = displayName;
+  document.getElementById('auth-screen').style.display = 'none';
+  const appEl = document.getElementById('app');
+  appEl.style.display = 'flex';
+
+  startListeners();
+});
+
+function startListeners() {
+  listenToConfig();
+  listenToTasks();
+  listenToDrafts();
+}
+function stopListeners() {
+  [unsubTasks, unsubDrafts, unsubConfig].forEach(u => u && u());
+  unsubTasks = unsubDrafts = unsubConfig = null;
+}
+
+// ── Auth UI ────────────────────────────────────────────────────
+let isSignUp = false;
+
+document.getElementById('auth-toggle-btn').onclick = () => {
+  isSignUp = !isSignUp;
+  document.getElementById('auth-name').style.display = isSignUp ? 'block' : 'none';
+  document.getElementById('auth-submit').textContent = isSignUp ? 'Create account' : 'Sign in';
+  document.getElementById('auth-toggle-text').textContent = isSignUp ? 'Already have an account?' : "Don't have an account?";
+  document.getElementById('auth-toggle-btn').textContent = isSignUp ? 'Sign in' : 'Sign up';
+  document.getElementById('auth-error').style.display = 'none';
+};
+
+document.getElementById('auth-submit').onclick = async () => {
+  const email    = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const name     = document.getElementById('auth-name').value.trim();
+  const errEl    = document.getElementById('auth-error');
+  const btn      = document.getElementById('auth-submit');
+
+  if (!email || !password) { showAuthError('Please enter your email and password.'); return; }
+
+  btn.disabled = true;
+  errEl.style.display = 'none';
+
+  try {
+    if (isSignUp) {
+      if (!name) { showAuthError('Please enter your name.'); btn.disabled = false; return; }
+      pendingName = name;
+      await auth.createUserWithEmailAndPassword(email, password);
+    } else {
+      await auth.signInWithEmailAndPassword(email, password);
+    }
+  } catch (e) {
+    pendingName = null;
+    showAuthError(friendlyAuthError(e.code));
+    btn.disabled = false;
+  }
+};
+
+// Allow Enter key in auth form
+['auth-email','auth-password'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('auth-submit').click();
+  });
+});
+
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg; el.style.display = 'block';
+}
+function friendlyAuthError(code) {
+  const map = {
+    'auth/user-not-found': 'No account found with that email.',
+    'auth/wrong-password': 'Incorrect password.',
+    'auth/email-already-in-use': 'An account with that email already exists.',
+    'auth/weak-password': 'Password must be at least 6 characters.',
+    'auth/invalid-email': 'Please enter a valid email address.',
+    'auth/invalid-credential': 'Incorrect email or password.',
+    'auth/too-many-requests': 'Too many attempts. Please try again later.',
+  };
+  return map[code] || 'Something went wrong. Please try again.';
+}
+
+document.getElementById('sign-out-btn').onclick = () => auth.signOut();
+
+// ── Config / Shared API key ────────────────────────────────────
+function listenToConfig() {
+  unsubConfig = db.doc('config/app').onSnapshot(snap => {
+    cachedApiKey = snap.exists ? (snap.data().anthropicKey || null) : null;
+    updateKeyStatus();
+  }, () => {});
+}
+
+function updateKeyStatus() {
+  const el = document.getElementById('api-key-status');
+  el.className = cachedApiKey ? 'ok' : '';
+  el.title = cachedApiKey ? 'API key configured' : 'No API key — click to add';
+}
+
+async function getApiKey() {
+  if (cachedApiKey) return cachedApiKey;
+  try {
+    const snap = await db.doc('config/app').get();
+    if (snap.exists) cachedApiKey = snap.data().anthropicKey || null;
+  } catch (e) {}
+  return cachedApiKey || '';
+}
+
+// API Key modal
+const apiModal = document.getElementById('api-modal');
+document.getElementById('api-key-btn').onclick = async () => {
+  document.getElementById('api-key-input').value = await getApiKey();
+  apiModal.classList.add('open');
+  document.getElementById('api-key-input').focus();
+};
+document.getElementById('modal-cancel').onclick = () => apiModal.classList.remove('open');
+document.getElementById('modal-save').onclick = async () => {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val) return;
+  try {
+    await db.doc('config/app').set({ anthropicKey: val }, { merge: true });
+    cachedApiKey = val;
+    updateKeyStatus();
+    apiModal.classList.remove('open');
+    toast('API key saved for all family members');
+  } catch (e) {
+    toast('Error saving key: ' + e.message);
+  }
+};
+apiModal.onclick = e => { if (e.target === apiModal) apiModal.classList.remove('open'); };
+
+// ── Tasks ──────────────────────────────────────────────────────
+function tasksRef() {
+  return currentList === 'private'
+    ? db.collection(`users/${currentUser.uid}/tasks`)
+    : db.collection('familyTasks');
+}
+
+function listenToTasks() {
+  if (unsubTasks) { unsubTasks(); unsubTasks = null; }
+  unsubTasks = tasksRef()
+    .orderBy('created', 'desc')
+    .onSnapshot(snap => {
+      tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderTasks();
+    }, err => {
+      console.error(err);
+      toast('Error loading tasks — check your connection');
+    });
+}
+
+async function addTask(data) {
+  const doc = {
+    ...data,
+    created: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  if (currentList === 'family') {
+    const name = currentUser.displayName || currentUser.email.split('@')[0];
+    doc.createdBy = { uid: currentUser.uid, name };
+  }
+  return tasksRef().add(doc);
+}
+
+async function toggleDone(id) {
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  const nowDone = !task.done;
+  await tasksRef().doc(id).update({
+    done: nowDone,
+    prevCategory: nowDone ? (task.category !== 'done' ? task.category : task.prevCategory) : undefined,
+    category: nowDone ? 'done' : (task.prevCategory || 'week')
+  });
+}
+
+async function deleteTask(id) {
+  await tasksRef().doc(id).delete();
+  toast('Task deleted');
+}
+
+// List tab switching
+document.querySelectorAll('.list-tab').forEach(btn => {
+  btn.onclick = () => {
+    if (btn.dataset.list === currentList) return;
+    document.querySelectorAll('.list-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentList = btn.dataset.list;
+    currentFilter = 'all';
+    document.querySelectorAll('.filter-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.filter === 'all');
+    });
+    listenToTasks();
+  };
+});
+
+// ── Drafts ─────────────────────────────────────────────────────
+function listenToDrafts() {
+  if (unsubDrafts) { unsubDrafts(); unsubDrafts = null; }
+  unsubDrafts = db.collection(`users/${currentUser.uid}/drafts`)
+    .orderBy('created', 'desc').limit(30)
+    .onSnapshot(snap => {
+      drafts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderDrafts();
+    }, () => {});
+}
+
+function saveDraft(text) {
+  if (!text.trim() || !currentUser) return;
+  db.collection(`users/${currentUser.uid}/drafts`).add({
+    text, created: firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(() => {});
+}
+
+async function deleteDraft(id) {
+  await db.collection(`users/${currentUser.uid}/drafts`).doc(id).delete();
+}
+
+function loadDraft(id) {
+  const d = drafts.find(x => x.id === id);
+  if (!d) return;
+  document.getElementById('dump-input').value = d.text;
+  document.getElementById('dump-input').scrollTop = document.getElementById('dump-input').scrollHeight;
+  document.getElementById('dump-input').focus();
+  toast('Draft loaded');
+}
+
+// ── Voice input ────────────────────────────────────────────────
+const voiceBtn         = document.getElementById('voice-btn');
+const dumpInput        = document.getElementById('dump-input');
+const micSelectWrapper = document.getElementById('mic-select-wrapper');
+const micSelect        = document.getElementById('mic-select');
+let recognition        = null;
+let isRecording        = false;
+let micStream          = null;
+let selectedDeviceId   = '';
+
+async function populateMics() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  try {
+    const mics = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
+    if (mics.length <= 1) { micSelectWrapper.style.display = 'none'; return; }
+    const prev = micSelect.value || selectedDeviceId;
+    micSelect.innerHTML = '';
+    mics.forEach(m => {
+      const o = document.createElement('option');
+      o.value = m.deviceId;
+      o.textContent = m.label || `Microphone (${m.deviceId.slice(0,8)}…)`;
+      micSelect.appendChild(o);
+    });
+    if (prev && mics.some(m => m.deviceId === prev)) micSelect.value = prev;
+    selectedDeviceId = micSelect.value;
+    micSelectWrapper.style.display = 'block';
+  } catch (e) { console.warn(e); }
+}
+
+micSelect.onchange = () => {
+  selectedDeviceId = micSelect.value;
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+};
+populateMics();
+if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', populateMics);
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  let finalTranscript = '';
+  let interimTranscript = '';
+  let baseText = '';
+
+  recognition.onresult = e => {
+    interimTranscript = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript;
+      else interimTranscript += e.results[i][0].transcript;
+    }
+    dumpInput.value = baseText + finalTranscript + interimTranscript;
+    dumpInput.scrollTop = dumpInput.scrollHeight;
+  };
+
+  recognition.onend = () => {
+    if (isRecording) { try { recognition.start(); } catch(_) {} return; }
+    voiceBtn.classList.remove('recording');
+    voiceBtn.textContent = '🎙️';
+    if (interimTranscript) { finalTranscript += interimTranscript; interimTranscript = ''; }
+    dumpInput.value = baseText + finalTranscript;
+    dumpInput.scrollTop = dumpInput.scrollHeight;
+  };
+
+  recognition.onerror = e => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    isRecording = false;
+    voiceBtn.classList.remove('recording');
+    voiceBtn.textContent = '🎙️';
+    toast('Mic error: ' + e.error);
+  };
+
+  voiceBtn.onclick = async () => {
+    if (isRecording) {
+      isRecording = false;
+      recognition.stop();
+      return;
+    }
+    if (!micStream || !micStream.active) {
+      try {
+        const c = selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : true;
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: c });
+        await populateMics();
+      } catch (e) {
+        toast('Mic access denied: ' + (e.message || e.name));
+        return;
+      }
+    }
+    baseText = dumpInput.value ? dumpInput.value + '\n' : '';
+    finalTranscript = '';
+    interimTranscript = '';
+    recognition.start();
+    isRecording = true;
+    voiceBtn.classList.add('recording');
+    voiceBtn.textContent = '⏹️';
+    toast('Recording… click again to stop');
+  };
+} else {
+  voiceBtn.style.opacity = '.4'; voiceBtn.style.cursor = 'not-allowed';
+  voiceBtn.onclick = () => toast('Voice input requires Chrome or Edge');
+}
+
+// ── Process with Claude ────────────────────────────────────────
+const processBtn = document.getElementById('process-btn');
+
+processBtn.onclick = async () => {
+  const text = dumpInput.value.trim();
+  if (!text) { toast('Nothing to process'); return; }
+
+  const key = await getApiKey();
+  if (!key) {
+    toast('Add the shared API key first');
+    document.getElementById('api-key-btn').click();
+    return;
+  }
+
+  saveDraft(text); // fire-and-forget
+
+  processBtn.disabled = true;
+  processBtn.classList.add('loading');
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-6',
+        max_tokens: 1024,
+        system: `You are a personal task organiser. Extract actionable tasks from the user's brain dump.
+
+For each task produce a JSON object:
+- "text": concise actionable title (imperative verb, under ~70 chars)
+- "category": "today" | "week" | "later" (infer from context; default "week")
+- "note": optional one-sentence clarification, else ""
+
+Today: ${new Date().toDateString()}
+
+Return ONLY a JSON array, no markdown, no explanation.`,
+        messages: [{ role: 'user', content: text }]
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const raw  = data.content[0].text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch { throw new Error('Claude returned unexpected format'); }
+
+    // Batch-write all tasks in one Firestore round-trip
+    const batch = db.batch();
+    let added = 0;
+    for (const item of parsed) {
+      if (!item.text) continue;
+      const ref = tasksRef().doc();
+      const doc = {
+        text: item.text, note: item.note || '',
+        category: item.category || 'week', done: false,
+        created: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      if (currentList === 'family') {
+        const name = currentUser.displayName || currentUser.email.split('@')[0];
+        doc.createdBy = { uid: currentUser.uid, name };
+      }
+      batch.set(ref, doc);
+      added++;
+    }
+    await batch.commit();
+
+    dumpInput.value = '';
+    toast(`Added ${added} task${added !== 1 ? 's' : ''}`);
+  } catch (e) {
+    console.error(e);
+    toast('Error: ' + e.message);
+  } finally {
+    processBtn.disabled = false;
+    processBtn.classList.remove('loading');
+  }
+};
+
+// ── Quick add ──────────────────────────────────────────────────
+const quickInput  = document.getElementById('quick-input');
+const quickAddBtn = document.getElementById('quick-add-btn');
+
+async function quickAdd() {
+  const text = quickInput.value.trim();
+  if (!text) return;
+  quickInput.value = '';
+  await addTask({ text, note: '', category: 'week', done: false });
+  toast('Task added');
+}
+quickAddBtn.onclick = quickAdd;
+quickInput.addEventListener('keydown', e => { if (e.key === 'Enter') quickAdd(); });
+
+// ── Filter ─────────────────────────────────────────────────────
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    renderTasks();
+  };
+});
+
+// ── Render tasks ───────────────────────────────────────────────
+function renderTasks() {
+  const container = document.getElementById('tasks-container');
+  const countEl   = document.getElementById('task-count');
+
+  const filtered = tasks.filter(t => {
+    if (currentFilter === 'all')  return true;
+    if (currentFilter === 'done') return t.done;
+    return !t.done && t.category === currentFilter;
+  });
+
+  countEl.textContent = `${filtered.length} task${filtered.length !== 1 ? 's' : ''}`;
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">✨</div>
+        <p>No tasks here.<br>Use the panel on the left to add some.</p>
+      </div>`;
+    return;
+  }
+
+  const groups = currentFilter === 'all'
+    ? [
+        { key:'today',  label:'Today',     color:'#7c6af5', items: filtered.filter(t => !t.done && t.category === 'today') },
+        { key:'week',   label:'This week',  color:'#2dd4bf', items: filtered.filter(t => !t.done && t.category === 'week') },
+        { key:'later',  label:'Later',      color:'#94a3b8', items: filtered.filter(t => !t.done && t.category === 'later') },
+        { key:'done',   label:'Done',       color:'#4ade80', items: filtered.filter(t =>  t.done) },
+      ]
+    : [{ key: currentFilter, label: { done:'Done', today:'Today', week:'This week', later:'Later' }[currentFilter], color:'#7c6af5', items: filtered }];
+
+  container.innerHTML = '';
+  for (const g of groups) {
+    if (!g.items.length) continue;
+    const hdr = document.createElement('div');
+    hdr.className = 'col-header';
+    hdr.innerHTML = `<div class="col-dot" style="background:${g.color}"></div><h3>${g.label}</h3><span class="col-count">${g.items.length}</span>`;
+    container.appendChild(hdr);
+    g.items.forEach(t => container.appendChild(buildCard(t)));
+  }
+}
+
+function buildCard(task) {
+  const card = document.createElement('div');
+  card.className = 'task-card' + (task.done ? ' done-card' : '');
+
+  const tagClass = task.done ? 'tag-done' : `tag-${task.category}`;
+  const tagLabel = task.done ? 'Done' : { today:'Today', week:'This week', later:'Later' }[task.category] || task.category;
+  const creatorTag = (currentList === 'family' && task.createdBy)
+    ? `<span class="task-tag tag-creator">by ${escHtml(task.createdBy.name)}</span>` : '';
+
+  card.innerHTML = `
+    <div class="task-check ${task.done ? 'done' : ''}" title="Toggle done"></div>
+    <div class="task-body">
+      <div class="task-text">${escHtml(task.text)}</div>
+      ${task.note ? `<div class="task-note">${escHtml(task.note)}</div>` : ''}
+      <div class="task-meta">
+        <span class="task-tag ${tagClass}">${tagLabel}</span>
+        ${creatorTag}
+      </div>
+    </div>
+    <div class="task-actions">
+      <button class="task-action-btn" title="Delete">✕</button>
+    </div>`;
+
+  card.querySelector('.task-check').onclick  = () => toggleDone(task.id);
+  card.querySelector('.task-action-btn').onclick = () => deleteTask(task.id);
+  return card;
+}
+
+// ── Render drafts ──────────────────────────────────────────────
+function renderDrafts() {
+  const section = document.getElementById('drafts-section');
+  const list    = document.getElementById('drafts-list');
+  if (!drafts.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.innerHTML = '';
+  for (const draft of drafts) {
+    const el  = document.createElement('div');
+    el.className = 'draft-item';
+    const ts  = draft.created?.toDate ? draft.created.toDate() : new Date(draft.created || 0);
+    const str = ts.toLocaleDateString(undefined, { month:'short', day:'numeric' })
+              + ' · ' + ts.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+    el.innerHTML = `
+      <div class="draft-time">${str}</div>
+      <div class="draft-preview">${escHtml(draft.text)}</div>
+      <div class="draft-actions">
+        <button class="draft-btn">Load &amp; edit</button>
+        <button class="draft-btn del">Delete</button>
+      </div>`;
+    el.querySelector('.draft-btn').onclick          = () => loadDraft(draft.id);
+    el.querySelector('.draft-btn.del').onclick      = () => deleteDraft(draft.id);
+    list.appendChild(el);
+  }
+}
+</script>
+</body>
+</html>
