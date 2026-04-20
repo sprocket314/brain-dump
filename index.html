@@ -794,12 +794,14 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   function makeRecognition() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const r = new SR();
-    r.continuous=true; r.interimResults=true; r.lang='en-US';
+    // continuous=false: each session is a single utterance with its own fresh
+    // results array. Avoids Android/Chrome replaying the previous session's
+    // results (starting from e.resultIndex=0) which caused duplication.
+    r.continuous=false; r.interimResults=true; r.lang='en-US';
     r.onresult = e => {
       interimT='';
-      // Append only new final results directly to baseText to prevent replay duplication
       for (let i=e.resultIndex;i<e.results.length;i++) {
-        if(e.results[i].isFinal) baseText+=e.results[i][0].transcript;
+        if(e.results[i].isFinal) baseText+=e.results[i][0].transcript+' ';
         else interimT+=e.results[i][0].transcript;
       }
       dumpInput.value=baseText+interimT;
@@ -807,9 +809,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     };
     r.onend = () => {
       if (isRecording) {
-        // Do NOT commit interimT here — on mobile the new session replays those
-        // words as final results, so committing now causes duplication each cycle.
-        interimT='';
+        if(interimT){baseText+=interimT+' ';interimT='';}
         recognition=makeRecognition();
         try{recognition.start();}catch(_){}
         return;
