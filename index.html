@@ -807,10 +807,9 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     };
     r.onend = () => {
       if (isRecording) {
-        if(interimT){baseText+=interimT;interimT='';}
-        dumpInput.value=baseText; dumpInput.scrollTop=dumpInput.scrollHeight;
-        // Create a fresh instance — reusing the same object on mobile causes
-        // the previous session's results to replay, duplicating transcribed text
+        // Do NOT commit interimT here — on mobile the new session replays those
+        // words as final results, so committing now causes duplication each cycle.
+        interimT='';
         recognition=makeRecognition();
         try{recognition.start();}catch(_){}
         return;
